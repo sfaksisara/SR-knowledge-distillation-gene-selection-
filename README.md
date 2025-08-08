@@ -195,20 +195,6 @@ pip install gplearn
 - **Storage**: ~50MB for code and data
 - **CPU**: Any modern processor (GPU optional)
 
-## Citation
-
-If you use this code in your research, please cite:
-
-```bibtex
-@article{your_paper_2024,
-  title={Symbolic Regression-Guided Knowledge Distillation for Interpretable Gene Selection in Cancer Classification},
-  author={[Your Name]},
-  journal={Pattern Analysis and Applications},
-  year={2024},
-  note={Under Review}
-}
-```
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -225,7 +211,7 @@ We welcome contributions! Please feel free to:
 
 For questions about the implementation or methodology, please:
 - Open an issue in this repository
-- Contact: [your-email@institution.edu]
+- Contact: [sara.sfaksi@univ-biskra.dz]
 
 ## Acknowledgments
 
