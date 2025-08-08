@@ -22,7 +22,7 @@ import re
 
 
 # ===================== 2. Load & Preprocess Dataset =====================
-df = pd.read_csv("yourdatasetname.csv")
+df = pd.read_csv("data/prostate.csv")
 
 X = df.drop('label', axis=1).values
 y = df['label'].values
@@ -278,3 +278,4 @@ if best_results:
 else:
 
     print("Did not achieve desired accuracy in any attempt.")
+
