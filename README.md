@@ -1,10 +1,13 @@
 # Symbolic Regression-Guided Knowledge Distillation for Interpretable Gene Selection in Cancer Classification
 
-This repository contains the implementation of our novel approach combining symbolic regression with knowledge distillation for interpretable gene selection in cancer classification tasks.
+This repository presents a novel hybrid machine learning pipeline that combines genetic programming (GP), knowledge distillation, and nested cross-validation for robust feature selection and classification in high-dimensional biomedical datasets.
 
 ## Abstract
 
-Our method leverages genetic programming to discover meaningful gene interactions while using knowledge distillation to transfer complex patterns from teacher models to interpretable student models, achieving high classification performance with enhanced biological interpretability.
+We introduce a three-stage methodology that addresses the critical challenge of feature selection in genomic data while maintaining strict adherence to best practices for avoiding data leakage:
+Teacher Network Training: A deep neural network (MLP) is trained on the full feature space to learn complex non-linear patterns
+GP-Guided Feature Selection: Genetic programming evolves symbolic expressions to approximate the teacher's soft predictions, automatically identifying the most informative features through evolutionary search
+Student Network Distillation: A compact student network is trained on selected features using knowledge distillation from the teacher's soft labels
 
 ## Repository Structure
 
@@ -48,130 +51,113 @@ pip install -r requirements.txt
 python code.py
 ```
 
-### Expected Output
-The script will display progress through several stages:
+Methodology NotesCore Pipeline (Nested 5-Fold Cross-Validation)Validation Protocol
 
-```
--- Teacher Model Evaluation --
-Accuracy : 0.8750
-Precision: 0.8571
-Recall   : 0.8571
-F1 Score : 0.8571
+Outer CV: 5 stratified folds maintaining class proportions
+Training/Test Split: 80%/20% per fold
+Key Principle: All feature selection occurs exclusively within training folds to prevent data leakage
+Step-by-Step Process (Per Fold k)Step 1: Fold-Specific Normalization
 
-===== Attempt 1 =====
-Selected GP genes: [2, 7, 15, 23, 45, 67, 89]
-Best symbolic model: add(mul(X2, X7), sub(X15, X23))
+Compute mean and standard deviation exclusively from training data
+Normalize training data using these parameters
+Apply same parameters to test data (computed only from training)
+Critical: Test set statistics never influence normalization
+Step 2: Teacher Model Training
+Architecture:
 
--- Student Model Evaluation --
-Accuracy : 0.8750
-Precision: 0.8571
-Recall   : 0.8571
-F1 Score : 0.8571
+Input: M genes (full feature set)
+Hidden: 128 neurons (ReLU activation)
+Output: 2 neurons (Softmax activation)
+Training Configuration:
 
--- Classical Classifier Evaluation on GP-selected genes --
-Logistic Regression:
-  Accuracy : 0.8750
-  Precision: 0.8571
-  Recall   : 0.8571
-  F1 Score : 0.8571
+Loss: CrossEntropyLoss on hard labels (0/1)
+Optimizer: Adam (learning rate=10⁻⁴, β₁=0.9, β₂=0.999)
+Early stopping: 15 epochs patience, 20% validation split
+Random seed: 42 + k (fold-specific)
+Trained exclusively on training fold
+Step 3: Soft Label Generation
 
-Random Forest:
-  Accuracy : 0.9000
-  Precision: 0.9000
-  Recall   : 0.9000
-  F1 Score : 0.9000
+Use temperature-scaled softmax (T=3.0) to generate probabilistic predictions
+Extract positive class probability: ŷᵢ = probability of class 1
+Purpose: Encode prediction confidence and uncertainty (not available in hard labels)
+Higher temperature creates "softer" distributions preserving inter-class relationships
+Step 4: Genetic Programming Feature SelectionConfiguration:
 
-[... additional classifier results ...]
-```
+Runs per fold: 5 independent runs (handles GP stochasticity)
+Generations: 300
+Population: 500 individuals
+Selection: Best run by lowest fitness value
+Function Sets:
 
-### Runtime
-- Expected runtime: 5-10 minutes on standard hardware
-- GPU acceleration available for PyTorch components
+Primary (algebraic): add, sub, mul, div, sqrt, abs - for interpretability
+Secondary (transcendental): exp, log, sin, cos, neg, inv, min, max
 
-## Methodology Overview
+Constrained to outer 2 tree levels, max nesting depth = 2
 
-The pipeline consists of several key stages:
 
-1. **Data Preprocessing**: Load prostate cancer dataset, apply standard scaling, create train/test split (80/20)
+Confidence-Weighted Fitness:
 
-2. **Teacher Training**: Train MLP teacher model on full gene expression feature set
+Sample weights: wᵢ = 2 × |ŷᵢ - 0.5|
 
-3. **Soft Label Generation**: Extract probabilistic predictions from teacher model to create soft targets
+Higher weight for confident predictions (near 0 or 1)
+Lower weight for uncertain predictions (near 0.5)
 
-4. **GP Feature Selection**: Use symbolic regression with custom fitness function to identify important gene combinations:
-   - Custom confidence-weighted fitness function
-   - Protected mathematical operations (exp, sin, cos, etc.)
-   - Multi-objective optimization balancing accuracy and complexity
 
-5. **Student Training**: Train compact student model using knowledge distillation:
-   - Temperature-scaled soft targets
-   - KL divergence loss for knowledge transfer
+Weighted R² fitness measures how well expression predicts soft labels
+Multi-Objective Optimization:
 
-6. **Evaluation**: Compare performance with classical ML classifiers on GP-selected features
+Balance accuracy and interpretability
+Fitness = (1 - R²_weighted) + λ × Complexity
+Complexity = tree depth + 0.01 × number of nodes
+Parsimony coefficient λ = 0.001
+Genetic Operators:
 
-## Key Features
+Tournament selection (k=3) for diversity
+Crossover probability: 0.7 (exchange subtrees between parents)
+Subtree mutation: 0.1 (random alterations)
+Hoist mutation: 0.05 (promote subtree to root)
+Point mutation: 0.1 (change single node)
+Max tree depth: 6
+Gene Extraction:
 
-- **Custom Fitness Function**: Confidence-weighted evaluation prioritizes high-confidence predictions
-- **Protected Operations**: Safe mathematical functions prevent numerical instabilities
-- **Knowledge Distillation**: Temperature-scaled soft target training preserves teacher knowledge
-- **Ensemble Comparison**: Comprehensive evaluation against multiple classical and ensemble methods
-- **Interpretable Output**: Symbolic expressions reveal meaningful gene interactions
+Parse best expression string
+Extract all feature indices appearing in expression
+Result: subset S* of selected genes
+Step 5: Model Training on Selected FeaturesStudent MLP (Knowledge Distillation):
 
-## Dataset
+Input: |S*| selected genes only
+Hidden: 64 neurons (ReLU activation)
+Output: 2 neurons (Softmax activation)
+Loss: KL divergence between student and teacher soft predictions
+Temperature T=3.0 for distillation, reset to 1.0 for inference
+Classical Classifiers (all trained on selected features):
 
-The experiment uses a prostate cancer gene expression dataset for binary classification:
-- **Features**: Gene expression values (numerical)
-- **Target**: Binary labels (0: normal, 1: cancer)
-- **Preprocessing**: StandardScaler normalization applied
-- **Split**: 80% training, 20% testing with stratification
+Logistic Regression (max_iter=1000)
+Random Forest (100 trees)
+SVM (linear kernel, C=1.0)
+Linear Discriminant Analysis (default parameters)
+K-Nearest Neighbors (k=5, euclidean distance)
+Gradient Boosting (100 estimators, learning rate=0.1)
+AdaBoost (50 estimators, learning rate=1.0)
+Voting Ensemble (LR, RF, SVM with soft voting)
+Stacking Ensemble (LR, RF, SVM with LR meta-learner)
+All classifiers use random_state=42 for determinismStep 6: Held-Out Evaluation
+Only after training completes, evaluate on isolated test fold:
 
-## Reproducibility
+Classification: Accuracy, Precision, Recall, F1-Score
+Discrimination: ROC-AUC, PR-AUC
+Calibration: Expected Calibration Error (ECE), Brier Score
+Confusion Matrix: True/False Positives/Negatives
+Statistical Aggregation (Across 5 Folds)After all K=5 folds complete:
 
-All experiments ensure reproducible results through:
-- Fixed random seeds (`random_state=42` for data splitting)
-- PyTorch manual seed setting for model initialization
-- Controlled GP evolution parameters
-- Deterministic evaluation procedures
+Compute mean performance metrics
+Compute standard deviation across folds
+Calculate 95% confidence intervals using t-distribution (t₄,₀.₉₇₅ = 2.776)
+Statistical Validation:
 
-To reproduce exact results from the paper:
-```bash
-python code.py  # Uses fixed seeds internally
-```
-
-## Model Architecture
-
-### Teacher Model (MLP)
-```python
-Sequential(
-    Linear(n_features, 128),
-    ReLU(),
-    Linear(128, 2)
-)
-```
-
-### Student Model (MLP)
-```python
-Sequential(
-    Linear(n_selected_features, 128), 
-    ReLU(),
-    Linear(128, 2)
-)
-```
-
-### Symbolic Regression Configuration
-- **Population size**: 300
-- **Generations**: 200
-- **Function set**: Linear (add, sub, mul, div) + nonlinear (exp, sin, cos, sqrt, log)
-- **Selection pressure**: Tournament selection
-- **Parsimony coefficient**: 0.001 (complexity penalty)
-
-## Performance Metrics
-
-The system evaluates models using:
-- **Accuracy**: Overall classification correctness
-- **Precision**: Positive predictive value
-- **Recall**: Sensitivity/true positive rate  
-- **F1-Score**: Harmonic mean of precision and recall
+Permutation p-values: 1000 random label shuffles per fold
+Significance threshold: α = 0.05
+All models achieved p < 0.001 (highly significant)
 
 ## Troubleshooting
 
